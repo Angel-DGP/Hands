@@ -1,5 +1,7 @@
 import cv2
 import mediapipe as mp
+from PIL import ImageFont, ImageDraw, Image
+import numpy as np
 
 def dedos_extendidos(puntos, mano_label):
     dedos_ids = {
@@ -24,14 +26,21 @@ def dedos_extendidos(puntos, mano_label):
 
     return resultado
 
-dispositivoCaptura = cv2.VideoCapture(0)
+
+dispositivoCaptura = cv2.VideoCapture(1)
+historial = []  
 
 mpManos = mp.solutions.hands
 manos = mpManos.Hands(static_image_mode=False,
                       max_num_hands=2,
                       min_detection_confidence=0.8,
-                      min_tracking_confidence=0.8)
+                      min_tracking_confidence=0.8) 
 mpDibujar = mp.solutions.drawing_utils
+
+
+font = ImageFont.truetype("arial.ttf", 32)
+
+ultimo_gesto = ""
 
 while True:
     success, img = dispositivoCaptura.read()
@@ -56,26 +65,43 @@ while True:
             mano_label = handType.classification[0].label
             dedos_estado = dedos_extendidos(puntos, mano_label)
 
-            if dedos_estado["menique"] and dedos_estado["pulgar"]==True and not any(
+            if dedos_estado["menique"] and dedos_estado["pulgar"] and not any(
                 dedos_estado[d] for d in ["indice", "medio", "anular"]
             ):
                 mensaje = "No"
-            elif dedos_estado["pulgar"]==False and not any(
+            elif not dedos_estado["pulgar"] and not any(
                 dedos_estado[d] for d in ["indice", "medio", "anular", "menique"]
             ):
                 mensaje = "Adios"
             elif all(dedos_estado.values()):
                 mensaje = "Hola"
-            elif dedos_estado["indice"] and dedos_estado["pulgar"]==False and not any(
-                dedos_estado[d] for d in [ "medio", "anular, menique"]
+            elif dedos_estado["indice"] and not dedos_estado["pulgar"] and not any(
+                dedos_estado[d] for d in ["medio", "anular", "menique"]
             ):
                 mensaje = "Si"
 
-    if mensaje:
-        cv2.putText(img, mensaje, (50, 50), cv2.FONT_HERSHEY_SIMPLEX,
-                    1.5, (0, 255, 0), 3, cv2.LINE_AA)
+    if mensaje and mensaje != ultimo_gesto:
+        historial.append(mensaje)
+        ultimo_gesto = mensaje
 
-    cv2.imshow("Detector de Gestos", img)
+    alto, ancho, _ = img.shape
+    barra_altura = 70
+    barra = np.ones((barra_altura, ancho, 3), dtype=np.uint8) * 255 
+
+    barra_pil = Image.fromarray(barra)
+    draw = ImageDraw.Draw(barra_pil)
+
+    x = 20
+    for gesto in historial[-4:]:  
+        draw.text((x, 15), gesto, font=font, fill=(0, 0, 0))
+        x += 150  
+
+    barra = np.array(barra_pil)
+
+
+    img_final = np.vstack((img, barra))
+
+    cv2.imshow("Detector de Gestos", img_final)
 
     if cv2.waitKey(1) & 0xFF == 27:
         break
